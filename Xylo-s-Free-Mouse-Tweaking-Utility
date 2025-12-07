@@ -1,76 +1,107 @@
 @echo off
-:: XyloMouseTweaks.bat  –  Windows 10/11  –  pure CMD, no crash, no exit-loop
-setlocal enabledelayedexpansion
-title Xylo Mouse Tweaks
+:: ======================================================================
+::  Xylo Services – Free Mouse Tweaks  (CMD / REG version)
+::  1. Input-delay reduction  (USB & HCI tweaks)
+::  2. Polling-rate lift      (1000 Hz)
+::  3. Precision fixes        (disable accel, flat curve)
+::  4. Full revert
+:: ======================================================================
+setlocal EnableExtensions
+set "key=HKLM\SYSTEM\CurrentControlSet"
+set "userKey=HKCU\Control Panel\Mouse"
 
-:: ---- sanity check ----
-net session >nul 2>&1 || (
-   echo You MUST run this file as Administrator.
-   pause
-   exit /b 1
+:: ----------------------------------------------------------
+::  Must be admin – self-elevate if not
+:: ----------------------------------------------------------
+>nul 2>&1 "%SystemRoot%\system32\fltmc.exe" || (
+   echo Elevating...
+   >"%temp%\getadmin.vbs" echo CreateObject("Shell.Application").ShellExecute "%~f0", "%*", "", "runas", 1
+   "%temp%\getadmin.vbs"
+   exit /b
 )
 
-:: ---- main loop ----
 :menu
 cls
-echo ============================
-echo    Xylo Mouse Tweaks  v2
-echo ============================
 echo.
-echo 1  Faster menus (8 ms)
-echo 2  1000 Hz USB polling
-echo 3  Disable mouse acceleration
-echo 4  Prevent USB suspend
-echo A  Apply ALL
-echo U  Undo / Rollback
-echo X  Exit
+echo =====  Xylo Services – Free Mouse Tweaks  =====
 echo.
-set "c="
-set /p "c=Pick: "
-if not defined c goto menu
-if /i "%c%"=="X" exit /b
-if /i "%c%"=="U" goto undo
+echo  1  Apply everything  (recommended)
+echo  2  Input-delay reduction only
+echo  3  Polling-rate (1000 Hz) only
+echo  4  Precision fixes only
+echo  R  Revert ALL changes
+echo  Q  Quit
+echo.
+choice /c 1234RQ /n /m "Select: "
+set "ch=%errorlevel%"
+if %ch%==6 goto :eof
+if %ch%==5 goto :revert
+if %ch%==1 goto :all
+if %ch%==2 goto :delay
+if %ch%==3 goto :poll
+if %ch%==4 goto :prec
+goto :menu
 
-:: ---- create restore point (silent) ----
-echo.
-echo Creating restore point ...
-set "RP=XyloMouseTweaks-%date:~10,4%-%date:~4,2%-%date:~7,2%-%time:~0,2%%time:~3,2%%time:~6,2%"
-set "RP=%RP: =0%"
-:: use SRCLIENT.DLL directly – works on every Win10/11
-powershell -nop -c "$p=New-Object -ComObject SystemRestore.Point;$p.Create('%RP%', 12, 100)" >nul 2>&1
-if !errorlevel!==0 (echo Restore point created.) else (echo ⚠️  Could not create RP – continuing anyway.)
+:all
+call :delay
+call :poll
+call :prec
+goto :fin
 
-:: ---- apply selected ----
-if /i "%c%"=="A" set c=1,2,3,4
-for %%i in (%c%) do (
-   if "%%i"=="1" (
-      echo + Faster menus
-      reg add "HKCU\Control Panel\Mouse" /v MouseHoverTime /t REG_SZ /d 8 /f >nul
-   )
-   if "%%i"=="2" (
-      echo + 1000 Hz USB polling
-      reg add "HKLM\SYSTEM\CurrentControlSet\Services\HIDUSB\Parameters" /v MaxPollInterval /t REG_DWORD /d 1 /f >nul
-   )
-   if "%%i"=="3" (
-      echo + Disable acceleration
-      reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f >nul
-      reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
-      reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
-   )
-   if "%%i"=="4" (
-      echo + Kill USB suspend
-      reg add "HKLM\SYSTEM\CurrentControlSet\Services\USB\Parameters" /v SelectiveSuspendEnabled /t REG_DWORD /d 0 /f >nul 2>&1
-      reg add "HKLM\SYSTEM\CurrentControlSet\Control\USB\Parameters" /v SelectiveSuspendEnabled /t REG_DWORD /d 0 /f >nul 2>&1
-   )
+:delay
+echo.
+echo --- Applying input-delay tweaks ---
+reg add "%key%\Services\USBSTOR" /v Start /t REG_DWORD /d 0 /f >nul
+reg add "%key%\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 0x26 /f >nul
+:: Enable MSI for first mouse (if key exists)
+for /f "tokens=*" %%i in ('reg query "%key%\Enum" /s /f "HID\VID"^| findstr "HID\VID"') do (
+   reg add "%%i\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" /v MSISupported /t REG_DWORD /d 1 /f >nul 2>nul
 )
-echo.
-echo ✅ Done – reboot to feel the difference.
-echo.
-pause
-goto menu
+echo Done.
+goto :eof
 
-:undo
+:poll
 echo.
-echo Opening System Restore ...
-rstrui.exe
-goto menu
+echo --- Raising polling rate to 1000 Hz ---
+reg add "%key%\Services\mouhid\Parameters" /v PollRate /t REG_DWORD /d 1000 /f >nul 2>nul
+reg add "%userKey%" /v MousePollRate /t REG_DWORD /d 1000 /f >nul
+echo Done.
+goto :eof
+
+:prec
+echo.
+echo --- Disabling acceleration / smoothing ---
+:: MouseSpeed=0 disables accel
+reg add "%userKey%" /v MouseSpeed /t REG_SZ /d 0 /f >nul
+reg add "%userKey%" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
+reg add "%userKey%" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
+:: Flat curves (5 x 8-byte pairs)
+reg add "%userKey%" /v SmoothMouseXCurve /t REG_BINARY /d 0000000000000000156e0000000000002adc0100000000003f4902000000000054b7030000000000 /f >nul
+reg add "%userKey%" /v SmoothMouseYCurve /t REG_BINARY /d 0000000000000000b50b0000000000006a170000000000001f23000000000000d42e000000000000 /f >nul
+echo Done.
+goto :eof
+
+:revert
+echo.
+echo --- Reverting all tweaks ---
+reg delete "%key%\Services\USBSTOR" /v Start /f >nul 2>nul
+reg delete "%key%\Control\PriorityControl" /v Win32PrioritySeparation /f >nul 2>nul
+for /f "tokens=*" %%i in ('reg query "%key%\Enum" /s /f "HID\VID"^| findstr "HID\VID"') do (
+   reg delete "%%i\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" /v MSISupported /f >nul 2>nul
+)
+reg delete "%key%\Services\mouhid\Parameters" /v PollRate /f >nul 2>nul
+reg delete "%userKey%" /v MousePollRate /f >nul 2>nul
+reg delete "%userKey%" /v MouseSpeed /f >nul 2>nul
+reg delete "%userKey%" /v MouseThreshold1 /f >nul 2>nul
+reg delete "%userKey%" /v MouseThreshold2 /f >nul 2>nul
+reg delete "%userKey%" /v SmoothMouseXCurve /f >nul 2>nul
+reg delete "%userKey%" /v SmoothMouseYCurve /f >nul 2>nul
+echo Reverted.
+goto :fin
+
+:fin
+echo.
+echo Finished.  Reboot now? (Y/N)
+choice /c YN /n
+if %errorlevel%==1 shutdown /r /t 5 /c "Rebooting for mouse tweaks..."
+goto :eof
