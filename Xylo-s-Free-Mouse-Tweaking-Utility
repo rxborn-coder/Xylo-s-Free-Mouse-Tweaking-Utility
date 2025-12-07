@@ -1,107 +1,136 @@
-@echo off
-:: ======================================================================
-::  Xylo Services – Free Mouse Tweaks  (CMD / REG version)
-::  1. Input-delay reduction  (USB & HCI tweaks)
-::  2. Polling-rate lift      (1000 Hz)
-::  3. Precision fixes        (disable accel, flat curve)
-::  4. Full revert
-:: ======================================================================
-setlocal EnableExtensions
-set "key=HKLM\SYSTEM\CurrentControlSet"
-set "userKey=HKCU\Control Panel\Mouse"
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+::  Xylo Services – Free Mouse Tweaks  (Professional CMD Edition)      ::
+::  1. Input-delay reduction   2. 1000 Hz polling   3. Precision fixes ::
+::  A = Apply All  |  R = Revert All  |  Q = Quit                      ::
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+@echo off & setlocal EnableExtensions DisableDelayedExpansion
+title Xylo Mouse Tweaks  [https://xylo.services]
+set "log=%temp%\XyloMouseTweaks.log"
+echo %date% %time%  Session started > "%log%"
 
-:: ----------------------------------------------------------
-::  Must be admin – self-elevate if not
-:: ----------------------------------------------------------
+::--------------------------------------------------------------------
+::  Require admin – self-elevate if necessary
+::--------------------------------------------------------------------
 >nul 2>&1 "%SystemRoot%\system32\fltmc.exe" || (
-   echo Elevating...
-   >"%temp%\getadmin.vbs" echo CreateObject("Shell.Application").ShellExecute "%~f0", "%*", "", "runas", 1
-   "%temp%\getadmin.vbs"
-   exit /b
+  echo Creating elevation prompt...
+  mshta vbscript:Execute("CreateObject(""Shell.Application"").ShellExecute ""cmd.exe"", ""/c """"%~f0"""" "", , ""runas"", 1")(window.close)
+  exit /b
 )
 
-:menu
+:begin
 cls
+mode con cols=82 lines=25
+color F0
 echo.
-echo =====  Xylo Services – Free Mouse Tweaks  =====
+echo    __  _______     ____                    __ ____      _    __
+echo   / / / / ___/    / __ \____  ____  ____  / // __ \____(_)  / /_
+echo  / /_/ /\__ \    / /_/ / __ \/ __ \/ __ \/ // /_/ / ___/ /  / __/
+echo / __  /___/ /   / ____/ /_/ / /_/ / /_/ / // ____/ /  / /  / /_
+echo/_/ /_//____/   /_/    \____/\____/\____/_//_/   /_/  /_/   \__/
 echo.
-echo  1  Apply everything  (recommended)
-echo  2  Input-delay reduction only
-echo  3  Polling-rate (1000 Hz) only
-echo  4  Precision fixes only
-echo  R  Revert ALL changes
-echo  Q  Quit
+echo         Free Mouse Tweaks  v1.2  ^(CMD Edition^)  ^|  xylo.services
 echo.
-choice /c 1234RQ /n /m "Select: "
-set "ch=%errorlevel%"
-if %ch%==6 goto :eof
-if %ch%==5 goto :revert
-if %ch%==1 goto :all
-if %ch%==2 goto :delay
-if %ch%==3 goto :poll
-if %ch%==4 goto :prec
-goto :menu
+echo    [A] Apply All Tweaks    [1] Input-Delay Only    [2] 1000 Hz Only
+echo    [3] Precision Only      [R] Revert Everything   [Q] Quit
+echo.
+choice /c A123RQ /n /m "    Select option: "
+set "opt=%errorlevel%"
+if %opt%==6 goto :eof
+if %opt%==5 goto :revert
+if %opt%==1 goto :applyAll
+if %opt%==2 goto :delayOnly
+if %opt%==3 goto :pollOnly
+if %opt%==4 goto :precOnly
+goto :begin
 
-:all
+::--------------------------------------------------------------------
+::  Apply All (A)
+::--------------------------------------------------------------------
+:applyAll
 call :delay
 call :poll
 call :prec
 goto :fin
 
+:delayOnly  & call :delay  & goto :fin
+:pollOnly   & call :poll   & goto :fin
+:precOnly   & call :prec   & goto :fin
+
+::--------------------------------------------------------------------
+::  1. Input-delay reduction
+::--------------------------------------------------------------------
 :delay
 echo.
-echo --- Applying input-delay tweaks ---
-reg add "%key%\Services\USBSTOR" /v Start /t REG_DWORD /d 0 /f >nul
-reg add "%key%\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 0x26 /f >nul
-:: Enable MSI for first mouse (if key exists)
-for /f "tokens=*" %%i in ('reg query "%key%\Enum" /s /f "HID\VID"^| findstr "HID\VID"') do (
-   reg add "%%i\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" /v MSISupported /t REG_DWORD /d 1 /f >nul 2>nul
+echo  [+] Input-delay reduction...
+set "key=HKLM\SYSTEM\CurrentControlSet"
+>>"%log%" echo %date% %time%  Input-delay start
+reg add "%key%\Services\USBSTOR" /v Start /t REG_DWORD /d 0 /f >>"%log%" 2>&1
+reg add "%key%\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 0x26 /f >>"%log%" 2>&1
+:: MSI for HID mice
+for /f "delims=" %%i in ('reg query "%key%\Enum" /s /f "HID\VID" 2^>nul ^| findstr "HID\VID"') do (
+  reg add "%%i\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" /v MSISupported /t REG_DWORD /d 1 /f >>"%log%" 2>&1
 )
-echo Done.
+echo     Done.
 goto :eof
 
+::--------------------------------------------------------------------
+::  2. 1000 Hz polling
+::--------------------------------------------------------------------
 :poll
 echo.
-echo --- Raising polling rate to 1000 Hz ---
-reg add "%key%\Services\mouhid\Parameters" /v PollRate /t REG_DWORD /d 1000 /f >nul 2>nul
-reg add "%userKey%" /v MousePollRate /t REG_DWORD /d 1000 /f >nul
-echo Done.
+echo  [+] Polling rate 1000 Hz...
+>>"%log%" echo %date% %time%  Polling 1000 Hz start
+reg add "%key%\Services\mouhid\Parameters" /v PollRate /t REG_DWORD /d 1000 /f >>"%log%" 2>&1
+reg add "HKCU\Control Panel\Mouse" /v MousePollRate /t REG_DWORD /d 1000 /f >>"%log%" 2>&1
+echo     Done.
 goto :eof
 
+::--------------------------------------------------------------------
+::  3. Precision fixes (disable accel, flat curves)
+::--------------------------------------------------------------------
 :prec
 echo.
-echo --- Disabling acceleration / smoothing ---
-:: MouseSpeed=0 disables accel
-reg add "%userKey%" /v MouseSpeed /t REG_SZ /d 0 /f >nul
-reg add "%userKey%" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
-reg add "%userKey%" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
-:: Flat curves (5 x 8-byte pairs)
-reg add "%userKey%" /v SmoothMouseXCurve /t REG_BINARY /d 0000000000000000156e0000000000002adc0100000000003f4902000000000054b7030000000000 /f >nul
-reg add "%userKey%" /v SmoothMouseYCurve /t REG_BINARY /d 0000000000000000b50b0000000000006a170000000000001f23000000000000d42e000000000000 /f >nul
-echo Done.
+echo  [+] Precision fixes...
+>>"%log%" echo %date% %time%  Precision start
+set "mkey=HKCU\Control Panel\Mouse"
+reg add "%mkey%" /v MouseSpeed        /t REG_SZ /d 0 /f >>"%log%" 2>&1
+reg add "%mkey%" /v MouseThreshold1   /t REG_SZ /d 0 /f >>"%log%" 2>&1
+reg add "%mkey%" /v MouseThreshold2   /t REG_SZ /d 0 /f >>"%log%" 2>&1
+reg add "%mkey%" /v SmoothMouseXCurve /t REG_BINARY /d 0000000000000000156e0000000000002adc0100000000003f4902000000000054b7030000000000 /f >>"%log%" 2>&1
+reg add "%mkey%" /v SmoothMouseYCurve /t REG_BINARY /d 0000000000000000b50b0000000000006a170000000000001f23000000000000d42e000000000000 /f >>"%log%" 2>&1
+echo     Done.
 goto :eof
 
+::--------------------------------------------------------------------
+::  Revert Everything
+::--------------------------------------------------------------------
 :revert
 echo.
-echo --- Reverting all tweaks ---
-reg delete "%key%\Services\USBSTOR" /v Start /f >nul 2>nul
-reg delete "%key%\Control\PriorityControl" /v Win32PrioritySeparation /f >nul 2>nul
-for /f "tokens=*" %%i in ('reg query "%key%\Enum" /s /f "HID\VID"^| findstr "HID\VID"') do (
-   reg delete "%%i\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" /v MSISupported /f >nul 2>nul
+echo  [-] Reverting all tweaks...
+>>"%log%" echo %date% %time%  Revert start
+set "key=HKLM\SYSTEM\CurrentControlSet"
+reg delete "%key%\Services\USBSTOR" /v Start /f >>"%log%" 2>&1
+reg delete "%key%\Control\PriorityControl" /v Win32PrioritySeparation /f >>"%log%" 2>&1
+for /f "delims=" %%i in ('reg query "%key%\Enum" /s /f "HID\VID" 2^>nul ^| findstr "HID\VID"') do (
+  reg delete "%%i\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" /v MSISupported /f >>"%log%" 2>&1
 )
-reg delete "%key%\Services\mouhid\Parameters" /v PollRate /f >nul 2>nul
-reg delete "%userKey%" /v MousePollRate /f >nul 2>nul
-reg delete "%userKey%" /v MouseSpeed /f >nul 2>nul
-reg delete "%userKey%" /v MouseThreshold1 /f >nul 2>nul
-reg delete "%userKey%" /v MouseThreshold2 /f >nul 2>nul
-reg delete "%userKey%" /v SmoothMouseXCurve /f >nul 2>nul
-reg delete "%userKey%" /v SmoothMouseYCurve /f >nul 2>nul
-echo Reverted.
+reg delete "%key%\Services\mouhid\Parameters" /v PollRate /f >>"%log%" 2>&1
+set "mkey=HKCU\Control Panel\Mouse"
+for %%v in (MousePollRate MouseSpeed MouseThreshold1 MouseThreshold2 SmoothMouseXCurve SmoothMouseYCurve) do (
+  reg delete "%mkey%" /v %%v /f >>"%log%" 2>&1
+)
+echo     Reverted.
 goto :fin
 
+::--------------------------------------------------------------------
+::  Finish – offer reboot
+::--------------------------------------------------------------------
 :fin
 echo.
-echo Finished.  Reboot now? (Y/N)
-choice /c YN /n
-if %errorlevel%==1 shutdown /r /t 5 /c "Rebooting for mouse tweaks..."
+echo  * Log saved to %log%
+echo.
+choice /c YN /n /m "  Reboot now to activate changes?  [Y/N] "
+if %errorlevel%==1 (
+  shutdown /r /t 10 /c "Xylo Mouse Tweaks – rebooting to apply changes..."
+)
 goto :eof
