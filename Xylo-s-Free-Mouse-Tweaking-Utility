@@ -1,0 +1,88 @@
+@echo off
+::  Xylo Services – Free Mouse Tweaks  (CMD Edition)
+title XyloMouseTweaks – free mouse responsiveness tweaks
+
+::---------- 1.  Must be admin ----------
+net file >nul 2>&1
+if %errorlevel% neq 0 (
+    echo This script needs Administrator rights.
+    echo Right-click the file and choose "Run as administrator".
+    pause & exit /b 1
+)
+
+::---------- 2.  Create System Restore Point ----------
+echo.
+echo Creating a System Restore point first…
+echo Please wait 15-30 s…
+wmic.exe /Namespace:\\root\default Path SystemRestore Call CreateRestorePoint "XyloMouseTweaks-before", 100, 7 >nul
+if %errorlevel% equ 0 (
+    echo ✔ System Restore point created successfully.
+) else (
+    echo ⚠ Could not create restore point – continuing anyway…
+)
+echo.
+
+::---------- 3.  Pick tweaks (safe input loop) ----------
+:ask
+echo Which tweaks do you want?  (type the number 1-4)
+echo 1  Reduce mouse hover delay
+echo 2  Kill unwanted mouse acceleration
+echo 3  Raise USB polling buffer (smoothness)
+echo 4  Apply ALL
+echo.
+set "choice="
+set /p choice=Your choice:
+:: strip spaces
+set "choice=%choice: =%"
+:: accept only 1-4
+echo "%choice%"|findstr /i "^\"[1-4]\"$" >nul || (
+    echo Please type 1, 2, 3 or 4.
+    goto ask
+)
+
+::---------- 4.  Apply selected ----------
+echo.
+echo Applying selected tweaks…
+echo.
+
+:: 1.  Reduce hover delay (MenuShowDelay)
+if "%choice%"=="1" goto t1
+if "%choice%"=="4" (
+    echo + Reducing MenuShowDelay…
+    reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 20 /f >nul && echo   ✔ MenuShowDelay set to 20 ms
+)
+
+:: 2.  Disable mouse acceleration
+:t1
+if "%choice%"=="2" goto t2
+if "%choice%"=="4" (
+    echo + Disabling mouse acceleration…
+    reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f >nul
+    reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
+    reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul && echo   ✔ Mouse acceleration disabled
+)
+
+:: 3.  Raise USB polling buffer
+:t2
+if "%choice%"=="3" goto t3
+if "%choice%"=="4" (
+    echo + Raising USB polling buffer (smoothness)…
+    reg add "HKCU\Control Panel\Mouse" /v MouseHoverTime /t REG_SZ /d 100 /f >nul && echo   ✔ MouseHoverTime set to 100 ms
+)
+goto done
+
+:t3
+echo + Raising USB polling buffer (smoothness)…
+reg add "HKCU\Control Panel\Mouse" /v MouseHoverTime /t REG_SZ /d 100 /f >nul && echo   ✔ MouseHoverTime set to 100 ms
+
+:done
+::---------- 5.  Done ----------
+echo.
+echo =====  All selected tweaks finished!  =====
+echo.
+echo To reverse changes, run System Restore and pick
+echo "XyloMouseTweaks-before".
+echo.
+echo Enjoy slightly snappier mouse action ^^
+pause
+exit /b 0
