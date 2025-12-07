@@ -1,83 +1,77 @@
 @echo off
-:: XyloMouseTweaks.cmd  –  pure CMD, no PowerShell
-:: Run as Administrator or it will exit.
+:: XyloMouseTweaks.bat  –  Windows 10/11  –  pure CMD
+:: -------------------------------------------------------
+:: 1  Faster menus
+:: 2  1000 Hz USB polling
+:: 3  Disable acceleration
+:: 4  Kill USB suspend
+:: A  All
+:: U  Undo (opens System Restore GUI – pick the restore point)
+:: -------------------------------------------------------
+setlocal enabledelayedexpansion
+title Xylo Mouse Tweaks
+
 net session >nul 2>&1 || (
-   echo This script must be run as Administrator.
+   echo You MUST run this file as Administrator.
    pause & exit /b 1
 )
 
-setlocal enabledelayedexpansion
-set "RPName=XyloMouseTweaks_Backup"
-
-:menu
+:ask
 cls
-echo ✨ Xylo Services – Free Mouse Tweaks ✨
+echo ============================
+echo    Xylo Mouse Tweaks  v1
+echo ============================
 echo.
-echo 0  Create Restore Point only
-echo 1  Faster menus ^(MouseHoverTime=8 ms^)
+echo 1  Faster menus (8 ms)
 echo 2  1000 Hz USB polling
 echo 3  Disable mouse acceleration
-echo 4  Prevent USB selective suspend
-echo A  Apply ALL selected above
-echo U  Undo ^(restore last Restore Point^)
+echo 4  Prevent USB suspend
+echo A  Apply ALL
+echo U  Undo / Rollback
 echo X  Exit
 echo.
-set /p "choice=Choose (comma/space ok, e.g. 1,3,A): "
-if /i "%choice%"=="X" exit /b
+set /p "c=Pick: " || goto ask
+if /i "%c%"=="X" exit /b
+if /i "%c%"=="U" goto undo
 
 :: ---------- create restore point ----------
 echo.
 echo Creating restore point ...
-wmic shadowcopy call create Volume=%SystemDrive%\ >nul 2>&1
-if %errorlevel%==0 (
-   echo Restore point created.
-) else (
-   echo WMIC failed, continuing anyway ...
-)
+set "RP=XyloMouseTweaks-%date:~10,4%%date:~4,2%%date:~7,2%-%time:~0,2%%time:~3,2%%time:~6,2%"
+set "RP=%RP: =0%"
+powershell -nop -c "Checkpoint-Computer -Description '%RP%' -RestorePointType 'MODIFY_SETTINGS'" >nul 2>&1
+if %errorlevel%==0 (echo Restore point created.) else (echo ⚠️  Could not create RP – continuing anyway.)
 
-:: ---------- parse choices ----------
-set "t1=0"
-set "t2=0"
-set "t3=0"
-set "t4=0"
-for %%c in (%choice%) do (
-   if /i "%%c"=="1" set t1=1
-   if /i "%%c"=="2" set t2=1
-   if /i "%%c"=="3" set t3=1
-   if /i "%%c"=="4" set t4=1
-   if /i "%%c"=="A" set t1=1&set t2=1&set t3=1&set t4=1
-   if /i "%%c"=="U" goto undo
+:: ---------- apply ----------
+if /i "%c%"=="A" set c=1,2,3,4
+for %%i in (%c%) do (
+   if "%%i"=="1" (
+      echo + Faster menus
+      reg add "HKCU\Control Panel\Mouse" /v MouseHoverTime /t REG_SZ /d 8 /f >nul
+   )
+   if "%%i"=="2" (
+      echo + 1000 Hz USB polling
+      reg add "HKLM\SYSTEM\CurrentControlSet\Services\HIDUSB\Parameters" /v MaxPollInterval /t REG_DWORD /d 1 /f >nul
+   )
+   if "%%i"=="3" (
+      echo + Disable acceleration
+      reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f >nul
+      reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
+      reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
+   )
+   if "%%i"=="4" (
+      echo + Kill USB suspend
+      reg add "HKLM\SYSTEM\CurrentControlSet\Services\USB\Parameters" /v SelectiveSuspendEnabled /t REG_DWORD /d 0 /f >nul 2>&1
+      reg add "HKLM\SYSTEM\CurrentControlSet\Control\USB\Parameters" /v SelectiveSuspendEnabled /t REG_DWORD /d 0 /f >nul 2>&1
+   )
 )
-
-:: ---------- apply selected ----------
-if %t1%==1 (
-   echo Applying faster menus ...
-   reg add "HKCU\Control Panel\Mouse" /v MouseHoverTime /t REG_SZ /d 8 /f >nul
-)
-if %t2%==1 (
-   echo Applying 1000 Hz USB polling ...
-   reg add "HKLM\SYSTEM\CurrentControlSet\Services\HIDUSB\Parameters" /v MaxPollInterval /t REG_DWORD /d 1 /f >nul
-)
-if %t3%==1 (
-   echo Disabling mouse acceleration ...
-   reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f >nul
-   reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
-   reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
-)
-if %t4%==1 (
-   echo Preventing USB selective suspend ...
-   reg add "HKLM\SYSTEM\CurrentControlSet\Enum\USB\ROOT_HUB\30&PID\Parameters" /v SelectiveSuspendEnabled /t REG_DWORD /d 0 /f >nul 2>&1
-)
-
 echo.
-echo ✅ Selected tweaks applied – reboot recommended.
+echo ✅ Done – reboot to feel the difference.
 pause
 exit /b
 
 :undo
 echo.
-echo Rolling back via restore point ...
-rstrui.exe /offline:%RPName% >nul 2>&1
-echo Done.  Reboot to see changes reverted.
-pause
-exit /byy
+echo Opening System Restore ...
+rstrui.exe
+exit /b
