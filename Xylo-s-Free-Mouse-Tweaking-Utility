@@ -1,18 +1,17 @@
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-::  Xylo Services – Free Mouse Tweaks  (Professional CMD Edition)      ::
+::  Xylo Free Mouse Tweaks  (Professional CMD Edition)                 ::
 ::  1. Input-delay reduction   2. 1000 Hz polling   3. Precision fixes ::
 ::  A = Apply All  |  R = Revert All  |  Q = Quit                      ::
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 @echo off & setlocal EnableExtensions DisableDelayedExpansion
-title Xylo Mouse Tweaks  [https://xylo.services]
-set "log=%temp%\XyloMouseTweaks.log"
+title Xylo Free Mouse Tweaks  [xylo.services]
+set "log=%temp%\XyloFreeMouseTweaks.log"
 echo %date% %time%  Session started > "%log%"
 
 ::--------------------------------------------------------------------
 ::  Require admin – self-elevate if necessary
 ::--------------------------------------------------------------------
 >nul 2>&1 "%SystemRoot%\system32\fltmc.exe" || (
-  echo Creating elevation prompt...
   mshta vbscript:Execute("CreateObject(""Shell.Application"").ShellExecute ""cmd.exe"", ""/c """"%~f0"""" "", , ""runas"", 1")(window.close)
   exit /b
 )
@@ -28,7 +27,7 @@ echo  / /_/ /\__ \    / /_/ / __ \/ __ \/ __ \/ // /_/ / ___/ /  / __/
 echo / __  /___/ /   / ____/ /_/ / /_/ / /_/ / // ____/ /  / /  / /_
 echo/_/ /_//____/   /_/    \____/\____/\____/_//_/   /_/  /_/   \__/
 echo.
-echo         Free Mouse Tweaks  v1.2  ^(CMD Edition^)  ^|  xylo.services
+echo         Xylo Free Mouse Tweaks  v1.0  ^(CMD Edition^)  ^|  xylo.services
 echo.
 echo    [A] Apply All Tweaks    [1] Input-Delay Only    [2] 1000 Hz Only
 echo    [3] Precision Only      [R] Revert Everything   [Q] Quit
@@ -62,11 +61,10 @@ goto :fin
 :delay
 echo.
 echo  [+] Input-delay reduction...
-set "key=HKLM\SYSTEM\CurrentControlSet"
 >>"%log%" echo %date% %time%  Input-delay start
+set "key=HKLM\SYSTEM\CurrentControlSet"
 reg add "%key%\Services\USBSTOR" /v Start /t REG_DWORD /d 0 /f >>"%log%" 2>&1
 reg add "%key%\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 0x26 /f >>"%log%" 2>&1
-:: MSI for HID mice
 for /f "delims=" %%i in ('reg query "%key%\Enum" /s /f "HID\VID" 2^>nul ^| findstr "HID\VID"') do (
   reg add "%%i\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" /v MSISupported /t REG_DWORD /d 1 /f >>"%log%" 2>&1
 )
@@ -80,7 +78,7 @@ goto :eof
 echo.
 echo  [+] Polling rate 1000 Hz...
 >>"%log%" echo %date% %time%  Polling 1000 Hz start
-reg add "%key%\Services\mouhid\Parameters" /v PollRate /t REG_DWORD /d 1000 /f >>"%log%" 2>&1
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\mouhid\Parameters" /v PollRate /t REG_DWORD /d 1000 /f >>"%log%" 2>&1
 reg add "HKCU\Control Panel\Mouse" /v MousePollRate /t REG_DWORD /d 1000 /f >>"%log%" 2>&1
 echo     Done.
 goto :eof
@@ -131,6 +129,6 @@ echo  * Log saved to %log%
 echo.
 choice /c YN /n /m "  Reboot now to activate changes?  [Y/N] "
 if %errorlevel%==1 (
-  shutdown /r /t 10 /c "Xylo Mouse Tweaks – rebooting to apply changes..."
+  shutdown /r /t 10 /c "Xylo Free Mouse Tweaks – rebooting to apply changes..."
 )
 goto :eof
