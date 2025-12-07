@@ -1,25 +1,20 @@
 @echo off
-:: XyloMouseTweaks.bat  –  Windows 10/11  –  pure CMD
-:: -------------------------------------------------------
-:: 1  Faster menus
-:: 2  1000 Hz USB polling
-:: 3  Disable acceleration
-:: 4  Kill USB suspend
-:: A  All
-:: U  Undo (opens System Restore GUI – pick the restore point)
-:: -------------------------------------------------------
+:: XyloMouseTweaks.bat  –  Windows 10/11  –  pure CMD, no crash, no exit-loop
 setlocal enabledelayedexpansion
 title Xylo Mouse Tweaks
 
+:: ---- sanity check ----
 net session >nul 2>&1 || (
    echo You MUST run this file as Administrator.
-   pause & exit /b 1
+   pause
+   exit /b 1
 )
 
-:ask
+:: ---- main loop ----
+:menu
 cls
 echo ============================
-echo    Xylo Mouse Tweaks  v1
+echo    Xylo Mouse Tweaks  v2
 echo ============================
 echo.
 echo 1  Faster menus (8 ms)
@@ -30,19 +25,22 @@ echo A  Apply ALL
 echo U  Undo / Rollback
 echo X  Exit
 echo.
-set /p "c=Pick: " || goto ask
+set "c="
+set /p "c=Pick: "
+if not defined c goto menu
 if /i "%c%"=="X" exit /b
 if /i "%c%"=="U" goto undo
 
-:: ---------- create restore point ----------
+:: ---- create restore point (silent) ----
 echo.
 echo Creating restore point ...
-set "RP=XyloMouseTweaks-%date:~10,4%%date:~4,2%%date:~7,2%-%time:~0,2%%time:~3,2%%time:~6,2%"
+set "RP=XyloMouseTweaks-%date:~10,4%-%date:~4,2%-%date:~7,2%-%time:~0,2%%time:~3,2%%time:~6,2%"
 set "RP=%RP: =0%"
-powershell -nop -c "Checkpoint-Computer -Description '%RP%' -RestorePointType 'MODIFY_SETTINGS'" >nul 2>&1
-if %errorlevel%==0 (echo Restore point created.) else (echo ⚠️  Could not create RP – continuing anyway.)
+:: use SRCLIENT.DLL directly – works on every Win10/11
+powershell -nop -c "$p=New-Object -ComObject SystemRestore.Point;$p.Create('%RP%', 12, 100)" >nul 2>&1
+if !errorlevel!==0 (echo Restore point created.) else (echo ⚠️  Could not create RP – continuing anyway.)
 
-:: ---------- apply ----------
+:: ---- apply selected ----
 if /i "%c%"=="A" set c=1,2,3,4
 for %%i in (%c%) do (
    if "%%i"=="1" (
@@ -67,11 +65,12 @@ for %%i in (%c%) do (
 )
 echo.
 echo ✅ Done – reboot to feel the difference.
+echo.
 pause
-exit /b
+goto menu
 
 :undo
 echo.
 echo Opening System Restore ...
 rstrui.exe
-exit /b
+goto menu
