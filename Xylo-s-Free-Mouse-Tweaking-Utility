@@ -1,88 +1,83 @@
 @echo off
-::  Xylo Services – Free Mouse Tweaks  (CMD Edition)
-title XyloMouseTweaks – free mouse responsiveness tweaks
-
-::---------- 1.  Must be admin ----------
-net file >nul 2>&1
-if %errorlevel% neq 0 (
-    echo This script needs Administrator rights.
-    echo Right-click the file and choose "Run as administrator".
-    pause & exit /b 1
+:: XyloMouseTweaks.cmd  –  pure CMD, no PowerShell
+:: Run as Administrator or it will exit.
+net session >nul 2>&1 || (
+   echo This script must be run as Administrator.
+   pause & exit /b 1
 )
 
-::---------- 2.  Create System Restore Point ----------
+setlocal enabledelayedexpansion
+set "RPName=XyloMouseTweaks_Backup"
+
+:menu
+cls
+echo ✨ Xylo Services – Free Mouse Tweaks ✨
 echo.
-echo Creating a System Restore point first…
-echo Please wait 15-30 s…
-wmic.exe /Namespace:\\root\default Path SystemRestore Call CreateRestorePoint "XyloMouseTweaks-before", 100, 7 >nul
-if %errorlevel% equ 0 (
-    echo ✔ System Restore point created successfully.
+echo 0  Create Restore Point only
+echo 1  Faster menus ^(MouseHoverTime=8 ms^)
+echo 2  1000 Hz USB polling
+echo 3  Disable mouse acceleration
+echo 4  Prevent USB selective suspend
+echo A  Apply ALL selected above
+echo U  Undo ^(restore last Restore Point^)
+echo X  Exit
+echo.
+set /p "choice=Choose (comma/space ok, e.g. 1,3,A): "
+if /i "%choice%"=="X" exit /b
+
+:: ---------- create restore point ----------
+echo.
+echo Creating restore point ...
+wmic shadowcopy call create Volume=%SystemDrive%\ >nul 2>&1
+if %errorlevel%==0 (
+   echo Restore point created.
 ) else (
-    echo ⚠ Could not create restore point – continuing anyway…
-)
-echo.
-
-::---------- 3.  Pick tweaks (safe input loop) ----------
-:ask
-echo Which tweaks do you want?  (type the number 1-4)
-echo 1  Reduce mouse hover delay
-echo 2  Kill unwanted mouse acceleration
-echo 3  Raise USB polling buffer (smoothness)
-echo 4  Apply ALL
-echo.
-set "choice="
-set /p choice=Your choice:
-:: strip spaces
-set "choice=%choice: =%"
-:: accept only 1-4
-echo "%choice%"|findstr /i "^\"[1-4]\"$" >nul || (
-    echo Please type 1, 2, 3 or 4.
-    goto ask
+   echo WMIC failed, continuing anyway ...
 )
 
-::---------- 4.  Apply selected ----------
-echo.
-echo Applying selected tweaks…
-echo.
-
-:: 1.  Reduce hover delay (MenuShowDelay)
-if "%choice%"=="1" goto t1
-if "%choice%"=="4" (
-    echo + Reducing MenuShowDelay…
-    reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 20 /f >nul && echo   ✔ MenuShowDelay set to 20 ms
+:: ---------- parse choices ----------
+set "t1=0"
+set "t2=0"
+set "t3=0"
+set "t4=0"
+for %%c in (%choice%) do (
+   if /i "%%c"=="1" set t1=1
+   if /i "%%c"=="2" set t2=1
+   if /i "%%c"=="3" set t3=1
+   if /i "%%c"=="4" set t4=1
+   if /i "%%c"=="A" set t1=1&set t2=1&set t3=1&set t4=1
+   if /i "%%c"=="U" goto undo
 )
 
-:: 2.  Disable mouse acceleration
-:t1
-if "%choice%"=="2" goto t2
-if "%choice%"=="4" (
-    echo + Disabling mouse acceleration…
-    reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f >nul
-    reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
-    reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul && echo   ✔ Mouse acceleration disabled
+:: ---------- apply selected ----------
+if %t1%==1 (
+   echo Applying faster menus ...
+   reg add "HKCU\Control Panel\Mouse" /v MouseHoverTime /t REG_SZ /d 8 /f >nul
+)
+if %t2%==1 (
+   echo Applying 1000 Hz USB polling ...
+   reg add "HKLM\SYSTEM\CurrentControlSet\Services\HIDUSB\Parameters" /v MaxPollInterval /t REG_DWORD /d 1 /f >nul
+)
+if %t3%==1 (
+   echo Disabling mouse acceleration ...
+   reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f >nul
+   reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
+   reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
+)
+if %t4%==1 (
+   echo Preventing USB selective suspend ...
+   reg add "HKLM\SYSTEM\CurrentControlSet\Enum\USB\ROOT_HUB\30&PID\Parameters" /v SelectiveSuspendEnabled /t REG_DWORD /d 0 /f >nul 2>&1
 )
 
-:: 3.  Raise USB polling buffer
-:t2
-if "%choice%"=="3" goto t3
-if "%choice%"=="4" (
-    echo + Raising USB polling buffer (smoothness)…
-    reg add "HKCU\Control Panel\Mouse" /v MouseHoverTime /t REG_SZ /d 100 /f >nul && echo   ✔ MouseHoverTime set to 100 ms
-)
-goto done
-
-:t3
-echo + Raising USB polling buffer (smoothness)…
-reg add "HKCU\Control Panel\Mouse" /v MouseHoverTime /t REG_SZ /d 100 /f >nul && echo   ✔ MouseHoverTime set to 100 ms
-
-:done
-::---------- 5.  Done ----------
 echo.
-echo =====  All selected tweaks finished!  =====
-echo.
-echo To reverse changes, run System Restore and pick
-echo "XyloMouseTweaks-before".
-echo.
-echo Enjoy slightly snappier mouse action ^^
+echo ✅ Selected tweaks applied – reboot recommended.
 pause
-exit /b 0
+exit /b
+
+:undo
+echo.
+echo Rolling back via restore point ...
+rstrui.exe /offline:%RPName% >nul 2>&1
+echo Done.  Reboot to see changes reverted.
+pause
+exit /byy
